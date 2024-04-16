@@ -1,0 +1,326 @@
+
+---------------##Linea----------------
+proc plotLine(x0, y0, x1, y1: int) =
+  var
+    dx = abs(x1 - x0)
+    sx = if x0 < x1: 1 else: -1
+    dy = -abs(y1 - y0)
+    sy = if y0 < y1: 1 else: -1
+    err = dx + dy
+    e2: int
+
+  while true:
+    setPixel(x0, y0)
+    if x0 == x1 and y0 == y1:
+      break
+    e2 = 2 * err
+    if e2 >= dy:
+      err += dy
+      x0 += sx
+    if e2 <= dx:
+      err += dx
+      y0 += sy
+
+---------------#Bresenham en 3D--------------
+proc plotLine3d(x0, y0, z0, x1, y1, z1: int) =
+  var
+    dx = abs(x1 - x0)
+    sx = if x0 < x1: 1 else: -1
+    dy = abs(y1 - y0)
+    sy = if y0 < y1: 1 else: -1
+    dz = abs(z1 - z0)
+    sz = if z0 < z1: 1 else: -1
+    dm = max(dx, dy, dz)
+    i = dm
+
+  var (nx1, ny1, nz1) = (i div 2, i div 2, i div 2)
+
+  while i >= 0:
+    setPixel(x0, y0, z0)
+    nx1 -= dx
+    if nx1 < 0:
+      nx1 += dm
+      x0 += sx
+    ny1 -= dy
+    if ny1 < 0:
+      ny1 += dm
+      y0 += sy
+    nz1 -= dz
+    if nz1 < 0:
+      nz1 += dm
+      z0 += sz
+    i -= 1
+
+-------------##Circulo ------------------
+proc plotCircle(xm, ym, r: int) =
+  var
+    x = -r
+    y = 0
+    err = 2 - 2 * r  # II. Cuadrante
+
+  while x < 0:
+    setPixel(xm - x, ym + y)  # I. Cuadrante
+    setPixel(xm - y, ym - x)  # II. Cuadrante
+    setPixel(xm + x, ym - y)  # III. Cuadrante
+    setPixel(xm + y, ym + x)  # IV. Cuadrante
+    let e_xy_plus_e_y = err + y
+    if e_xy_plus_e_y <= 0:
+      err += ++y * 2 + 1  # e_xy + e_y < 0
+    let e_xy_plus_e_x = err + x
+    if r > x or e_xy_plus_e_x > y:
+      err += ++x * 2 + 1  # e_xy + e_x > 0 o no hay segundo paso en y
+
+
+----------------#Elipse------------------ 
+
+proc plotEllipseRect(x0, y0, x1, y1: int) =
+  var
+    a = abs(x1 - x0)
+    b = abs(y1 - y0)
+    b1 = b and 1  # valores del diámetro
+    dx = 4 * (1 - a) * b * b  # incremento de error
+    dy = 4 * (b1 + 1) * a * a  # incremento de error
+    var err = dx + dy + b1 * a * a
+    e2: int  # error del primer paso
+
+  if x0 > x1:
+    x0 = x1
+    x1 += a  # si se llama con puntos intercambiados
+  if y0 > y1:
+    y0 = y1  # intercámbialos
+  y0 += (b + 1) div 2
+  y1 = y0 - b1  # píxel inicial
+  a *= 8 * a
+  b1 = 8 * b * b
+
+  while x0 <= x1:
+    setPixel(x1, y0)  # I. Cuadrante
+    setPixel(x0, y0)  # II. Cuadrante
+    setPixel(x0, y1)  # III. Cuadrante
+    setPixel(x1, y1)  # IV. Cuadrante
+    e2 = 2 * err
+    if e2 <= dy:
+      y0 += 1
+      y1 -= 1
+      err += dy += a  # paso en y
+    if e2 >= dx or 2 * err > dy:
+      x0 += 1
+      x1 -= 1
+      err += dx += b1  # paso en x
+
+  while y0 - y1 < b:
+    setPixel(x0 - 1, y0)  # -> termina la punta de la elipse
+    setPixel(x1 + 1, y0)
+    y0 += 1
+    setPixel(x0 - 1, y1)
+    setPixel(x1 + 1, y1)
+    y1 -= 1
+
+---------------##Curva de Bezier-------------------
+
+proc plotQuadBezierSeg(x0, y0, x1, y1, x2, y2: int) =
+  var
+    sx = x2 - x1
+    sy = y2 - y1
+    xx = x0 - x1
+    yy = y0 - y1
+    xy: int  # valores relativos para comprobaciones
+    dx, dy, err, cur: float64
+
+  cur = float64(xx * sy - yy * sx)  # curvatura
+
+  assert(xx * sx <= 0 and yy * sy <= 0)  # el signo de la pendiente no debe cambiar
+
+  if sx * sx + sy * sy > xx * xx + yy * yy:  # comenzar con la parte más larga
+    x2 = x0
+    x0 = sx + x1
+    y2 = y0
+    y0 = sy + y1
+    cur = -cur  # intercambiar P0 P2
+
+  if cur != 0:  # no es una línea recta
+    xx += sx
+    xx *= sx = if x0 < x2: 1 else: -1  # dirección del paso en x
+    yy += sy
+    yy *= sy = if y0 < y2: 1 else: -1  # dirección del paso en y
+    xy = 2 * xx * yy
+    xx *= xx
+    yy *= yy  # diferencias de 2º grado
+    if cur * sx * sy < 0:  # curvatura negativa
+      xx = -xx
+      yy = -yy
+      xy = -xy
+      cur = -cur
+    dx = 4.0 * sy * cur * (x1 - x0) + xx - xy  # diferencias de 1º grado
+    dy = 4.0 * sx * cur * (y0 - y1) + yy - xy
+    xx += xx
+    yy += yy
+    err = dx + dy + xy  # error en el 1er paso
+    while true:
+      setPixel(x0, y0)  # dibujar curva
+      if x0 == x2 and y0 == y2:
+        return  # último píxel -> curva terminada
+      let y1 = 2 * err < dx
+      if 2 * err > dy:
+        x0 += sx
+        dx -= xy
+        err += dy += yy  # paso en x
+      if y1:
+        y0 += sy
+        dy -= xy
+        err += dx += xx  # paso en y
+      if dy < dx:
+        break  # el gradiente se negativiza -> falla del algoritmo
+
+  plotLine(x0, y0, x2, y2)  # trazar la parte restante hasta el final
+
+
+--------Linea Suavizada------------
+proc plotLineAA(x0, y0, x1, y1: int) =
+  var
+    dx = abs(x1 - x0)
+    sx = if x0 < x1: 1 else: -1
+    dy = abs(y1 - y0)
+    sy = if y0 < y1: 1 else: -1
+    err = dx - dy
+    e2: int
+    x2: int  # valor de error e_xy
+    ed: float64
+
+  ed = if dx + dy == 0: 1 else: sqrt(float64(dx * dx + dy * dy))
+
+  while true:  # bucle de píxeles
+    setPixelAA(x0, y0, 255 * abs(err - dx + dy) / ed)
+    e2 = err
+    x2 = x0
+    if 2 * e2 >= -dx:  # paso en x
+      if x0 == x1:
+        break
+      if e2 + dy < ed:
+        setPixelAA(x0, y0 + sy, 255 * (e2 + dy) / ed)
+      err -= dy
+      x0 += sx
+    if 2 * e2 <= dy:  # paso en y
+      if y0 == y1:
+        break
+      if dx - e2 < ed:
+        setPixelAA(x2 + sx, y0, 255 * (dx - e2) / ed)
+      err += dx
+      y0 += sy
+
+
+
+--------Curva de bezier cuadratica con alias Anit---------------
+proc plotQuadBezierSegAA(x0, y0, x1, y1, x2, y2: int) =
+  var
+    sx = x2 - x1
+    sy = y2 - y1
+    xx = x0 - x1
+    yy = y0 - y1
+    xy: int  # valores relativos para comprobaciones
+    dx, dy, err, ed, cur: float64
+
+  assert(xx * sx >= 0 and yy * sy >= 0)  # el signo de la pendiente no debe cambiar
+
+  if sx * sx + sy * sy > xx * xx + yy * yy:  # comenzar con la parte más larga
+    x2 = x0
+    x0 = sx + x1
+    y2 = y0
+    y0 = sy + y1
+    cur = -cur  # intercambiar P0 P2
+
+  if cur != 0:
+    xx += sx
+    xx *= sx = if x0 < x2: 1 else: -1  # dirección del paso en x
+    yy += sy
+    yy *= sy = if y0 < y2: 1 else: -1  # dirección del paso en y
+    xy = 2 * xx * yy
+    xx *= xx
+    yy *= yy  # diferencias de 2º grado
+    if cur * sx * sy < 0:  # curvatura negativa
+      xx = -xx
+      yy = -yy
+      xy = -xy
+      cur = -cur
+    dx = 4.0 * sy * (x1 - x0) * cur + xx - xy  # diferencias de 1º grado
+    dy = 4.0 * sx * (y0 - y1) * cur + yy - xy
+    xx += xx
+    yy += yy
+    err = dx + dy + xy  # error en el 1er paso
+    while true:
+      cur = min(dx + xy, -xy - dy)
+      ed = max(dx + xy, -xy - dy)  # distancia de error aproximada
+      ed = 255 / (ed + 2 * ed * cur * cur / (4.0 * ed * ed + cur * cur))
+      setPixelAA(x0, y0, ed * abs(err - dx - dy - xy))  # trazar curva
+      if x0 == x2 and y0 == y2:
+        return  # último píxel -> curva terminada
+      var x1 = x0
+      cur = dx - err
+      var y1 = 2 * err + dy < 0
+      if 2 * err + dx > 0:  # paso en x
+        if err - dy < ed:
+          setPixelAA(x0, y0 + sy, ed * abs(err - dy))
+        x0 += sx
+        dx -= xy
+        err += dy += yy
+      if y1:  # paso en y
+        if cur < ed:
+          setPixelAA(x1 + sx, y0, ed * abs(cur))
+        y0 += sy
+        dy -= xy
+        err += dx += xx
+      if dy < dx:
+        break  # el gradiente se negativiza -> cerrar curvas
+
+  plotLineAA(x0, y0, x2, y2)  # trazar aguja restante hasta el final
+
+
+
+-----Linea gruesa suavizada-------
+proc plotLineWidth(x0, y0, x1, y1: int, wd: float) =
+  var
+    dx = abs(x1 - x0)
+    sx = if x0 < x1: 1 else: -1
+    dy = abs(y1 - y0)
+    sy = if y0 < y1: 1 else: -1
+    err = dx - dy
+    e2: int
+    x2, y2: int  # valor de error e_xy
+    ed: float
+
+  ed = if dx + dy == 0: 1 else: sqrt(float(dx * dx + dy * dy))
+
+  for wd = (wd + 1) / 2.0:  # bucle de píxeles
+    setPixelColor(x0, y0, max(0, 255 * (abs(err - dx + dy) / ed - wd + 1)))
+    e2 = err
+    x2 = x0
+    if 2 * e2 >= -dx:  # paso en x
+      while true:
+        e2 += dy
+        y2 = y0
+        if e2 < ed * wd and (y1 != y2 or dx > dy):
+          setPixelColor(x0, y2 += sy, max(0, 255 * (abs(e2) / ed - wd + 1)))
+          e2 += dx
+          continue
+        if x0 == x1:
+          break
+        e2 = err
+        err -= dy
+        x0 += sx
+    if 2 * e2 <= dy:  # paso en y
+      while true:
+        e2 = dx - e2
+        x2 = x0
+        if e2 < ed * wd and (x1 != x2 or dx < dy):
+          setPixelColor(x2 += sx, y0, max(0, 255 * (abs(e2) / ed - wd + 1)))
+          e2 += dy
+          continue
+        if y0 == y1:
+          break
+        err += dx
+        y0 += sy
+
+
+
+
+
